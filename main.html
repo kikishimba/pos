@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>간단 POS 시스템</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding-bottom: 60px; }
+  h2 { background: #f0f0f0; padding: 10px; }
+  .menu-item { display: flex; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid #eee; align-items: center; }
+  .menu-name { flex: 2; }
+  .menu-price { flex: 1; text-align: right; }
+  .menu-controls { display: flex; align-items: center; gap: 5px; flex: 1; justify-content: flex-end; }
+  button { padding: 4px 8px; font-size: 16px; }
+  .team-selector { position: fixed; bottom: 0; width: 100%; background: #ddd; display: flex; justify-content: space-around; padding: 10px 0; border-top: 1px solid #aaa; }
+  .team-button { font-size: 16px; padding: 10px; background: white; border: 1px solid #aaa; border-radius: 6px; width: 30px; }
+  .team-button.active { background: #4caf50; color: white; }
+
+  /* 하단 버튼 스타일 */
+  #send, #cancelAll {
+    position: fixed;
+    bottom: 70px;
+    padding: 12px 20px;
+    font-size: 18px;
+    color: white;
+    border: none;
+    border-radius: 8px;
+  }
+  #send {
+    right: 20px;
+    background: #2196f3;
+  }
+  #cancelAll {
+    right: 150px;
+    background: #f44336;
+  }
+
+  #order-log { padding: 10px; background: #fafafa; margin-top: 20px; border-top: 2px solid #ccc; }
+  .order-block { margin-bottom: 10px; border-bottom: 1px dashed #ccc; padding-bottom: 8px; }
+</style>
+</head>
+<body>
+  <h2>🍽 FOOD</h2>
+  <div id="food-menu"></div>
+  <h2>🍹 DRINK</h2>
+  <div id="drink-menu"></div>
+
+  <button id="send">送信</button>
+  <button id="cancelAll">全キャンセル</button>
+
+  <div id="order-log">
+    <h2>🧾 注文履歴</h2>
+    <div id="order-history"></div>
+  </div>
+
+  <div class="team-selector" id="team-selector"></div>
+
+<script>
+const foodItems = [
+  { name: "フグの唐揚げ", price: 1500 },
+  { name: "フグの唐揚げ half", price: 800 },
+  { name: "赤酢香の物", price: 700 },
+  { name: "揚げ湯葉クラッカー", price: 900 },
+  { name: "黒豚の黒糖角煮", price: 800 },
+];
+const drinkItems = [
+  { name: "ビール(中ビン)", price: 800 },
+  { name: "黒糖焼酎", price: 800 },
+  { name: "米焼酎", price: 800 },
+  { name: "芋焼酎", price: 800 },
+  { name: "麦焼酎", price: 800 },
+  { name: "真澄", price: 1000 },
+  { name: "ヒレ酒", price: 1000 },
+  { name: "IMA(今代司)", price: 1000 },
+  { name: "綠茶", price: 1000 },
+  { name: "ジャスミン茶", price: 1000 },
+  { name: "リンゴジュース", price: 1000 },
+  { name: "みかんジュース", price: 1000 },
+  { name: "ぶどうジュース(赤い日)", price: 1000 },
+];
+
+let currentTeam = 1;
+const teams = Array.from({ length: 8 }, () => []);
+const currentOrder = {};
+
+function createMenu(containerId, items) {
+  const container = document.getElementById(containerId);
+  items.forEach(item => {
+    const div = document.createElement('div');
+    div.className = 'menu-item';
+
+    const name = document.createElement('div');
+    name.className = 'menu-name';
+    name.textContent = item.name;
+
+    const price = document.createElement('div');
+    price.className = 'menu-price';
+    price.textContent = "￥" + item.price;
+
+    const controls = document.createElement('div');
+    controls.className = 'menu-controls';
+
+    const minus = document.createElement('button');
+    minus.textContent = "-";
+    minus.onclick = () => adjustItem(item.name, -1);
+
+    const count = document.createElement('span');
+    count.id = `count-${item.name}`;
+    count.textContent = "0";
+
+    const plus = document.createElement('button');
+    plus.textContent = "+";
+    plus.onclick = () => adjustItem(item.name, 1);
+
+    controls.appendChild(minus);
+    controls.appendChild(count);
+    controls.appendChild(plus);
+
+    div.appendChild(name);
+    div.appendChild(price);
+    div.appendChild(controls);
+    container.appendChild(div);
+  });
+}
+
+function adjustItem(name, delta) {
+  if (!currentOrder[name]) currentOrder[name] = 0;
+  currentOrder[name] += delta;
+  if (currentOrder[name] < 0) currentOrder[name] = 0;
+  document.getElementById(`count-${name}`).textContent = currentOrder[name];
+}
+
+function renderTeamButtons() {
+  const container = document.getElementById('team-selector');
+  container.innerHTML = "";
+  for (let i = 1; i <= 8; i++) {
+    const btn = document.createElement('button');
+    btn.textContent = i;
+    btn.className = 'team-button';
+    if (i === currentTeam) btn.classList.add('active');
+    btn.onclick = () => {
+      currentTeam = i;
+      document.querySelectorAll('.team-button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderOrderHistory();
+    };
+    container.appendChild(btn);
+  }
+}
+
+function sendOrder() {
+  const order = [];
+  let total = 0;
+  for (const name in currentOrder) {
+    const qty = currentOrder[name];
+    if (qty > 0) {
+      const price = [...foodItems, ...drinkItems].find(i => i.name === name).price;
+      total += price * qty;
+      order.push({ name, qty, price });
+    }
+  }
+  if (order.length === 0) return;
+  teams[currentTeam - 1].push({ order, total });
+  renderOrderHistory();
+  clearOrder();
+}
+
+function cancelAllOrders() {
+  teams[currentTeam - 1] = []; // 해당 팀 주문 전부 삭제
+  renderOrderHistory();
+}
+
+function renderOrderHistory() {
+  const container = document.getElementById('order-history');
+  container.innerHTML = "";
+  const orders = teams[currentTeam - 1];
+  let grandTotal = 0;
+
+  orders.forEach((o) => {
+    const block = document.createElement('div');
+    block.className = 'order-block';
+    o.order.forEach(item => {
+      const line = document.createElement('div');
+      line.textContent = `${item.name}　${item.qty}　￥${item.price * item.qty}`;
+      block.appendChild(line);
+    });
+    grandTotal += o.total;
+    container.appendChild(block);
+  });
+
+  const totalLine = document.createElement('div');
+  totalLine.innerHTML = `<strong>注文金額 ￥${grandTotal}</strong>`;
+  container.appendChild(totalLine);
+}
+
+function clearOrder() {
+  for (const name in currentOrder) {
+    currentOrder[name] = 0;
+    const countEl = document.getElementById(`count-${name}`);
+    if (countEl) countEl.textContent = "0";
+  }
+}
+
+document.getElementById('send').onclick = sendOrder;
+document.getElementById('cancelAll').onclick = cancelAllOrders;
+
+createMenu('food-menu', foodItems);
+createMenu('drink-menu', drinkItems);
+renderTeamButtons();
+</script>
+</body>
+</html>
